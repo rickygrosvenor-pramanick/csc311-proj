@@ -73,7 +73,12 @@ class AutoEncoder(nn.Module):
         # Implement the function as described in the docstring.             #
         # Use sigmoid activations for f and g.                              #
         #####################################################################
-        out = inputs
+        first_layer = self.g(inputs)
+        # apply sigmoid activation to first layer
+        first_layer = torch.sigmoid(first_layer)
+        second_layer = self.h(first_layer)
+        # apply sigmoid activation to second layer
+        out = torch.sigmoid(second_layer)
         #####################################################################
         #                       END OF YOUR CODE                            #
         #####################################################################
