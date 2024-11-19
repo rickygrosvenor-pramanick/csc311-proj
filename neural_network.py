@@ -50,7 +50,9 @@ class AutoEncoder(nn.Module):
         super(AutoEncoder, self).__init__()
 
         # Define linear functions.
+        # g takes in of shape [1, 1774] and output shape [1, k]
         self.g = nn.Linear(num_question, k)
+        # h takes in of shape [1, k] and output shape [1, 1774]
         self.h = nn.Linear(k, num_question)
 
     def get_weight_norm(self):
@@ -98,11 +100,14 @@ def train(model, lr, lamb, train_data, zero_train_data, valid_data, num_epoch):
     :param num_epoch: int
     :return: None
     """
-    # TODO: Add a regularizer to the cost function.
+    # TODO: Add a regularizer to the cost function. - lamb
 
     # Tell PyTorch you are training the model.
     model.train()
 
+    epoch_arr = []
+    train_loss_arr = []
+    valid_acc_arr = []
     # Define optimizers and loss function.
     optimizer = optim.SGD(model.parameters(), lr=lr)
     num_student = train_data.shape[0]
@@ -121,18 +126,28 @@ def train(model, lr, lamb, train_data, zero_train_data, valid_data, num_epoch):
             nan_mask = np.isnan(train_data[user_id].unsqueeze(0).numpy())
             target[nan_mask] = output[nan_mask]
 
-            loss = torch.sum((output - target) ** 2.0)
+            # add regularisation to loss function
+            weight_norm_squared = model.get_weight_norm()
+            # Modify a function train so that the objective adds the L2 regularization
+            loss = torch.sum((output - target) ** 2.0) + (lamb / 2) * weight_norm_squared
             loss.backward()
 
             train_loss += loss.item()
             optimizer.step()
 
         valid_acc = evaluate(model, zero_train_data, valid_data)
+
         print(
             "Epoch: {} \tTraining Cost: {:.6f}\t " "Valid Acc: {}".format(
                 epoch, train_loss, valid_acc
             )
         )
+        epoch_arr.append(epoch)
+        train_loss_arr.append(train_loss)
+        valid_acc_arr.append(valid_acc)
+    
+    objectives = [epoch_arr, train_loss_arr, valid_acc_arr]
+    return objectives
     #####################################################################
     #                       END OF YOUR CODE                            #
     #####################################################################
@@ -173,16 +188,36 @@ def main():
     # validation set.                                                   #
     #####################################################################
     # Set model hyperparameters.
-    k = None
-    model = None
+    k = 50
+    model = AutoEncoder(train_matrix.shape[1], k)
 
     # Set optimization hyperparameters.
-    lr = None
-    num_epoch = None
-    lamb = None
+    lr = 0.01
+    num_epoch = 50
+    lamb = 0.001
 
-    train(model, lr, lamb, train_matrix, zero_train_matrix, valid_data, num_epoch)
+    objectives = train(model, lr, lamb, train_matrix, zero_train_matrix, valid_data, num_epoch)
+    epoch_arr = objectives[0]
+    train_loss_arr = objectives[1]
+    valid_acc_arr = objectives[2]
+
     # Next, evaluate your network on validation/test data
+    import matplotlib.pyplot as plt
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+    ax1.plot(epoch_arr, train_loss_arr)
+    ax1.set_title("Training Loss over Epochs")
+    ax1.set_xlabel("epoch")
+    ax1.set_ylabel("Training Loss")
+
+    ax2.plot(epoch_arr, valid_acc_arr)
+    ax2.set_title("Validation Accuracy over Epochs")
+    ax2.set_xlabel("epoch")
+    ax2.set_ylabel("Validation Accuracy")
+
+    # plt.show()
+
+    test_acc = evaluate(model, zero_train_matrix, test_data)
+    print(f"Test Accuracy: {test_acc}")
 
     #####################################################################
     #                       END OF YOUR CODE                            #
