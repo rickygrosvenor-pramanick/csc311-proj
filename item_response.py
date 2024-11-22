@@ -1,141 +1,163 @@
 from utils import (
-    load_train_csv,
-    load_valid_csv,
-    load_public_test_csv,
-    load_train_sparse,
+	load_train_csv,
+	load_valid_csv,
+	load_public_test_csv,
+	load_train_sparse,
 )
 import numpy as np
+import matplotlib.pyplot as plt # imported for generating graphs
 
 
 def sigmoid(x):
-    """Apply sigmoid function."""
-    return np.exp(x) / (1 + np.exp(x))
-
+	"""Apply sigmoid function."""
+	return np.exp(x) / (1 + np.exp(x))
 
 def neg_log_likelihood(data, theta, beta):
-    """Compute the negative log-likelihood.
+	"""Compute the negative log-likelihood.
 
-    You may optionally replace the function arguments to receive a matrix.
+	You may optionally replace the function arguments to receive a matrix.
 
-    :param data: A dictionary {user_id: list, question_id: list,
-    is_correct: list}
-    :param theta: Vector
-    :param beta: Vector
-    :return: float
-    """
-    #####################################################################
-    # TODO:                                                             #
-    # Implement the function as described in the docstring.             #
-    #####################################################################
-    log_lklihood = 0.0
-    #####################################################################
-    #                       END OF YOUR CODE                            #
-    #####################################################################
-    return -log_lklihood
-
+	:param data: A dictionary {user_id: list, question_id: list,
+	is_correct: list}
+	:param theta: Vector of shape (N_students,)
+	:param beta: Vector of shape (N_questions,)
+	:return: float
+	"""
+	uids, qids, correct = [np.array(data[k]) for k in ["user_id", "question_id", "is_correct"]]
+	theta_minus_beta = theta[uids] - beta[qids]
+	log_likelihood = np.sum(correct * theta_minus_beta - np.log(1 + np.exp(theta_minus_beta)))
+	return -log_likelihood / len(uids) # returning mean neg_lld (otherwise the graphs of train vs val are not on the same scale)
 
 def update_theta_beta(data, lr, theta, beta):
-    """Update theta and beta using gradient descent.
+	"""Update theta and beta using gradient descent.
 
-    You are using alternating gradient descent. Your update should look:
-    for i in iterations ...
-        theta <- new_theta
-        beta <- new_beta
+	You are using alternating gradient descent. Your update should look:
+	for i in iterations ...
+		theta <- new_theta
+		beta <- new_beta
 
-    You may optionally replace the function arguments to receive a matrix.
+	You may optionally replace the function arguments to receive a matrix.
 
-    :param data: A dictionary {user_id: list, question_id: list,
-    is_correct: list}
-    :param lr: float
-    :param theta: Vector
-    :param beta: Vector
-    :return: tuple of vectors
-    """
-    #####################################################################
-    # TODO:                                                             #
-    # Implement the function as described in the docstring.             #
-    #####################################################################
-    pass
-    #####################################################################
-    #                       END OF YOUR CODE                            #
-    #####################################################################
-    return theta, beta
+	:param data: A dictionary {user_id: list, question_id: list,
+	is_correct: list}
+	:param lr: float
+	:param theta: Vector
+	:param beta: Vector
+	:return: tuple of vectors
+	"""
+	uids, qids, correct = [np.array(data[k]) for k in ["user_id", "question_id", "is_correct"]]
+	frac = 1 / (1 + np.exp(beta[qids] - theta[uids])) # common fractional part in beta_grad and theta_grad
+	
+	# filling beta and theta grad iteratively
+	theta_grad = np.zeros_like(theta)
+	beta_grad = np.zeros_like(beta)
+	for i, (u, q, c) in enumerate(zip(uids, qids, correct)):
+		theta_grad[u] += frac[i] - c
+		beta_grad[q] -= frac[i] - c
+	
+	# parameter update rules (regular grad desc)
+	new_theta = theta - lr * theta_grad
+	new_beta = beta - lr * beta_grad
+	return new_theta, new_beta
 
 
-def irt(data, val_data, lr, iterations):
-    """Train IRT model.
+def irt(data, val_data, n_students, n_questions, lr, iterations):
+	"""Train IRT model.
 
-    You may optionally replace the function arguments to receive a matrix.
+	You may optionally replace the function arguments to receive a matrix.
 
-    :param data: A dictionary {user_id: list, question_id: list,
-    is_correct: list}
-    :param val_data: A dictionary {user_id: list, question_id: list,
-    is_correct: list}
-    :param lr: float
-    :param iterations: int
-    :return: (theta, beta, val_acc_lst)
-    """
-    # TODO: Initialize theta and beta.
-    theta = None
-    beta = None
+	:param data: A dictionary {user_id: list, question_id: list,
+	is_correct: list}
+	:param val_data: A dictionary {user_id: list, question_id: list,
+	is_correct: list}
+	:param lr: float
+	:param iterations: int
+	:return: (theta, beta, val_acc_lst)
+	"""
+	theta = np.random.randn(n_students)
+	beta = np.random.randn(n_questions)
+	print(theta.shape, beta.shape)
 
-    val_acc_lst = []
+	val_acc_lst = []
+	train_lld_list = []
+	val_lld_list = []
 
-    for i in range(iterations):
-        neg_lld = neg_log_likelihood(data, theta=theta, beta=beta)
-        score = evaluate(data=val_data, theta=theta, beta=beta)
-        val_acc_lst.append(score)
-        print("NLLK: {} \t Score: {}".format(neg_lld, score))
-        theta, beta = update_theta_beta(data, lr, theta, beta)
+	for i in range(iterations):
+		score = evaluate(data=val_data, theta=theta, beta=beta)
+		val_acc_lst.append(score)
 
-    # TODO: You may change the return values to achieve what you want.
-    return theta, beta, val_acc_lst
+		# compute and save train and val neg_llds
+		neg_lld = neg_log_likelihood(data, theta=theta, beta=beta)
+		val_neg_lld = neg_log_likelihood(val_data, theta=theta, beta=beta)
+		train_lld_list.append(neg_lld)
+		val_lld_list.append(val_neg_lld)
+		print("Iteration: [{}/{}] \t NLLK: {} \t Score: {}".format(i, iterations, neg_lld, score))
+
+		# update parameters with computed gradients
+		theta, beta = update_theta_beta(data, lr, theta, beta)
+
+	return theta, beta, val_acc_lst, train_lld_list, val_lld_list
 
 
 def evaluate(data, theta, beta):
-    """Evaluate the model given data and return the accuracy.
-    :param data: A dictionary {user_id: list, question_id: list,
-    is_correct: list}
+	"""Evaluate the model given data and return the accuracy.
+	:param data: A dictionary {user_id: list, question_id: list,
+	is_correct: list}
 
-    :param theta: Vector
-    :param beta: Vector
-    :return: float
-    """
-    pred = []
-    for i, q in enumerate(data["question_id"]):
-        u = data["user_id"][i]
-        x = (theta[u] - beta[q]).sum()
-        p_a = sigmoid(x)
-        pred.append(p_a >= 0.5)
-    return np.sum((data["is_correct"] == np.array(pred))) / len(data["is_correct"])
+	:param theta: Vector
+	:param beta: Vector
+	:return: float
+	"""
+	pred = []
+	for i, q in enumerate(data["question_id"]):
+		u = data["user_id"][i]
+		x = (theta[u] - beta[q]).sum()
+		p_a = sigmoid(x)
+		pred.append(p_a >= 0.5)
+	return np.sum((data["is_correct"] == np.array(pred))) / len(data["is_correct"])
 
 
 def main():
-    train_data = load_train_csv("./data")
-    # You may optionally use the sparse matrix.
-    # sparse_matrix = load_train_sparse("./data")
-    val_data = load_valid_csv("./data")
-    test_data = load_public_test_csv("./data")
+	train_data = load_train_csv("./data")
+	# You may optionally use the sparse matrix.
+	# sparse_matrix = load_train_sparse("./data")
+	val_data = load_valid_csv("./data")
+	test_data = load_public_test_csv("./data")
 
-    #####################################################################
-    # TODO:                                                             #
-    # Tune learning rate and number of iterations. With the implemented #
-    # code, report the validation and test accuracy.                    #
-    #####################################################################
-    pass
-    #####################################################################
-    #                       END OF YOUR CODE                            #
-    #####################################################################
+	n_students = max(max(train_data["user_id"]), max(val_data["user_id"]), max(test_data["user_id"])) + 1
+	n_questions = max(max(train_data["question_id"]), max(val_data["question_id"]), max(test_data["question_id"])) + 1
+	print(f"N_students: {n_students}, N_questions: {n_questions}")
 
-    #####################################################################
-    # TODO:                                                             #
-    # Implement part (d)                                                #
-    #####################################################################
-    pass
-    #####################################################################
-    #                       END OF YOUR CODE                            #
-    #####################################################################
+	np.random.seed(311)
+	lr = 0.003
+	n_iterations = 100
+	theta, beta, val_acc, train_lld, val_lld = irt(train_data, val_data, n_students, n_questions, lr, n_iterations)
+
+	# plotting mean negative log likelihood for train and val
+	plt.plot(train_lld, c="r", label="train")
+	plt.plot(val_lld, c="b", label="validation")
+	plt.xlabel("iteration")
+	plt.ylabel("mean negative log-likelihood")
+	plt.legend()
+	plt.savefig("q2b-fig.jpg")
+	plt.clf()
+	plt.close()
+
+	final_val_acc = evaluate(val_data, theta, beta)
+	final_test_acc = evaluate(test_data, theta, beta)
+	print(f"final validation accuracy: {final_val_acc}, final test accuracy: {final_test_acc}")
+
+	# part d
+	j3 = np.random.randint(0, n_questions - 1, (3,))
+	plt.figure()
+	for q_j in j3:
+		exp_diff = np.exp(theta - beta[q_j])
+		lld = exp_diff / (1 + exp_diff)
+		plt.hist(lld, bins=30, alpha=0.5, label=f"Question {q_j}")
+		# plt.plot(np.sort(lld), label=f"Question {q_j}")
+	plt.legend()
+	plt.show()
 
 
 if __name__ == "__main__":
-    main()
+	main()
