@@ -1,4 +1,3 @@
-# TODO: complete this file.
 """
 Implements bagging ensemble model using models from Q1, Q2, and Q3.
 """
@@ -7,9 +6,56 @@ from utils import (
     load_train_csv,
     load_valid_csv,
     load_public_test_csv,
+    load_train_sparse,
 )
 import numpy as np
+from scipy.sparse import coo_matrix
+from sklearn.impute import KNNImputer
+import torch
+from torch.autograd import Variable
+
 from item_response import *
+from neural_network import train, AutoEncoder
+
+
+def convert_dict_to_sparse(data: dict[str, list[int]]):
+    question_id = np.array(data["question_id"])
+    user_id = np.array(data["user_id"])
+    is_correct = np.array(data["is_correct"])
+
+    num_users = user_id.max() + 1
+    num_questions = question_id.max() + 1
+    sparse_matrix = coo_matrix(
+        (is_correct, (user_id, question_id)), shape=(num_users, num_questions)
+    )
+    return sparse_matrix.tocsc()
+
+
+def load_data_NN(sparse_matrix, base_path="./data"):
+    """Load the data in PyTorch Tensor.
+
+    :return: (zero_train_matrix, train_data, valid_data, test_data)
+        WHERE:
+        zero_train_matrix: 2D sparse matrix where missing entries are
+        filled with 0.
+        train_data: 2D sparse matrix
+        valid_data: A dictionary {user_id: list,
+        user_id: list, is_correct: list}
+        test_data: A dictionary {user_id: list,
+        user_id: list, is_correct: list}
+    """
+    train_matrix = sparse_matrix.toarray()
+    valid_data = load_valid_csv(base_path)
+    test_data = load_public_test_csv(base_path)
+
+    zero_train_matrix = train_matrix.copy()
+    # Fill in the missing entries to 0.
+    zero_train_matrix[np.isnan(train_matrix)] = 0
+    # Change to Float Tensor for PyTorch.
+    zero_train_matrix = torch.FloatTensor(zero_train_matrix)
+    train_matrix = torch.FloatTensor(train_matrix)
+
+    return zero_train_matrix, train_matrix, valid_data, test_data
 
 
 def sample_with_replacement(data: dict[str, list[int]]) -> dict[str, list[int]]:
@@ -26,58 +72,48 @@ def sample_with_replacement(data: dict[str, list[int]]) -> dict[str, list[int]]:
     return sampled_data
 
 
-def ensemble(train_data: dict[str, list[int]], valid_data: dict[str, list[int]]):
-    # sample with replacement 3 times
-    train_data1 = sample_with_replacement(train_data)
-    train_data2 = sample_with_replacement(train_data)
-    train_data3 = sample_with_replacement(train_data)
+def evaluate_ensemble(
+    train_data, valid_data, theta, beta, model, knn_matrix, weights=None
+) -> float:
+    model.eval()
+    correct, total = 0, 0
 
-    # hyperparams
-    np.random.seed(311)
-    lr = 0.003
-    n_iterations = 100
+    if not weights:
+        weights = {"irt": 0.6, "nn": 0.3, "knn": 0.1}
 
-    theta1, beta1, val_acc, train_lld, val_lld = irt(
-        train_data1,
-        valid_data,
-        len(set(train_data1["user_id"])),
-        len(set(train_data1["question_id"])),
-        lr,
-        n_iterations,
-    )
+    for key in ["irt", "nn", "knn"]:
+        assert key in weights
 
-    theta2, beta2, val_acc, train_lld, val_lld = irt(
-        train_data2,
-        valid_data,
-        len(set(train_data2["user_id"])),
-        len(set(train_data2["question_id"])),
-        lr,
-        n_iterations,
-    )
+    irt_weight, nn_weight, knn_weight = weights["irt"], weights["nn"], weights["knn"]
 
-    theta3, beta3, val_acc, train_lld, val_lld = irt(
-        train_data3,
-        valid_data,
-        len(set(train_data3["user_id"])),
-        len(set(train_data3["question_id"])),
-        lr,
-        n_iterations,
-    )
+    if not np.isclose(sum(weights.values()), 1.0):
+        raise ValueError("The weights for KNN, NN, and IRT must sum to 1.")
 
-    return [(theta1, beta1), (theta2, beta2), (theta3, beta3)]
+    for i, u in enumerate(valid_data["user_id"]):
+        q = valid_data["question_id"][i]
 
+        # IRT
+        irt_prediction = sigmoid(theta[u] - beta[q])
 
-def evaluate(data: dict[str, list[int]], theta_betas: list) -> float:
-    pred = []
-    for i, q in enumerate(data["question_id"]):
-        curr_pred = []
-        for theta, beta in theta_betas:
-            u = data["user_id"][i]
-            x = (theta[u] - beta[q]).sum()
-            p_a = sigmoid(x)
-            curr_pred.append(p_a >= 0.5)
-        pred.append((sum(curr_pred) / len(curr_pred)) >= 0.5)
-    return np.sum((data["is_correct"] == np.array(pred))) / len(data["is_correct"])
+        # NN
+        inputs = Variable(train_data[u]).unsqueeze(0)
+        nn_output = model(inputs)
+        nn_prediction = nn_output[0][q].item()
+
+        # KNN
+        knn_prediction = knn_matrix[u, q]
+
+        combined_prediction = (
+            irt_weight * irt_prediction
+            + nn_weight * nn_prediction
+            + knn_weight * knn_prediction
+        )
+
+        if (combined_prediction >= 0.5) == valid_data["is_correct"][i]:
+            correct += 1
+        total += 1
+
+    return correct / float(total)
 
 
 def main():
@@ -85,8 +121,63 @@ def main():
     valid_data = load_valid_csv()
     test_data = load_public_test_csv()
 
-    theta_betas = ensemble(train_data, valid_data)
-    test_acc = evaluate(test_data, theta_betas)
+    matrix_from_file = load_train_sparse()
+    print(type(matrix_from_file))
+    print(matrix_from_file.shape)
+
+    # Hyperparameters (optimal ones found in Q1 - Q3)
+    irt_lr = 0.003
+    irt_n_iterations = 100
+
+    nn_k = 50
+    nn_lr = 0.01
+    nn_num_epoch = 50
+    nn_lamb = 0.001
+
+    knn_k = 11
+
+    # 1. Sample 3 diff datasets with replacement
+    train1 = sample_with_replacement(train_data)
+    train2 = sample_with_replacement(train_data)
+    train3 = sample_with_replacement(train_data)
+
+    matrix_dict = convert_dict_to_sparse(train1)
+    print(type(matrix_dict))
+    print(matrix_dict.shape)
+
+    # 2. Train models
+
+    # Model 1 - IRT
+    irt_ret = irt(
+        train1,
+        valid_data,
+        len(set(train1["user_id"])),
+        len(set(train1["question_id"])),
+        irt_lr,
+        irt_n_iterations,
+    )
+    theta1, beta1 = irt_ret[0], irt_ret[1]
+
+    # Model 2 - NN
+    sparse_train2_matrix = convert_dict_to_sparse(train2)
+    zero_train_matrix, train_matrix, valid_data, test_data = load_data_NN(
+        sparse_train2_matrix
+    )
+    model = AutoEncoder(train_matrix.shape[1], nn_k)
+
+    train(
+        model, nn_lr, nn_lamb, train_matrix, zero_train_matrix, valid_data, nn_num_epoch
+    )
+
+    # Model 3 - KNN
+    sparse_train3_matrix = convert_dict_to_sparse(train3)
+    knn_imputer = KNNImputer(n_neighbors=knn_k)
+    knn_matrix = knn_imputer.fit_transform(sparse_train3_matrix.toarray())
+
+    # 3. Evaluate on test data
+    test_acc = evaluate_ensemble(
+        zero_train_matrix, test_data, theta1, beta1, model, knn_matrix
+    )
     print(f"Final test accuracy: {test_acc}")
 
 
