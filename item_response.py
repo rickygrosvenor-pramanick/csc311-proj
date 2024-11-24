@@ -148,15 +148,18 @@ def main():
 	print(f"final validation accuracy: {final_val_acc}, final test accuracy: {final_test_acc}")
 
 	# part d
-	j3 = np.random.randint(0, n_questions - 1, (3,))
+	xvals = np.linspace(-5, 5, 100) # range of theta values on x axis
+	j3 = np.random.randint(0, len(beta), 3) # 3 random questions
 	plt.figure()
-	for q_j in j3:
-		exp_diff = np.exp(theta - beta[q_j])
-		lld = exp_diff / (1 + exp_diff)
-		plt.hist(lld, bins=30, alpha=0.5, label=f"Question {q_j}")
-		# plt.plot(np.sort(lld), label=f"Question {q_j}")
+	for j in j3:
+		exp_theta_minus_beta = np.exp(xvals - beta[j])
+		p = exp_theta_minus_beta / (1 + exp_theta_minus_beta)
+		plt.plot(xvals, p, label=f'Question {j}')
+
+	plt.xlabel(r'$\theta$ (Student Ability)')
+	plt.ylabel('$p(c_{ij} = 1)$')
 	plt.legend()
-	plt.show()
+	plt.savefig("q2d-fig.jpg")
 
 
 if __name__ == "__main__":
