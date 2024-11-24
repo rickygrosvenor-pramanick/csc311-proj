@@ -104,10 +104,6 @@ def main():
     valid_data = load_valid_csv()
     test_data = load_public_test_csv()
 
-    matrix_from_file = load_train_sparse()
-    print(type(matrix_from_file))
-    print(matrix_from_file.shape)
-
     # Hyperparameters (optimal ones found in Q1 - Q3)
     irt_lr = 0.003
     irt_n_iterations = 100
@@ -123,10 +119,6 @@ def main():
     train1 = sample_with_replacement(train_data)
     train2 = sample_with_replacement(train_data)
     train3 = sample_with_replacement(train_data)
-
-    matrix_dict = convert_dict_to_sparse(train1)
-    print(type(matrix_dict))
-    print(matrix_dict.shape)
 
     # 2. Train models
 
