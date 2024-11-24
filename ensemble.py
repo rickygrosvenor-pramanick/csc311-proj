@@ -72,22 +72,9 @@ def sample_with_replacement(data: dict[str, list[int]]) -> dict[str, list[int]]:
     return sampled_data
 
 
-def evaluate_ensemble(
-    train_data, valid_data, theta, beta, model, knn_matrix, weights=None
-) -> float:
+def evaluate_ensemble(train_data, valid_data, theta, beta, model, knn_matrix) -> float:
     model.eval()
     correct, total = 0, 0
-
-    if not weights:
-        weights = {"irt": 0.6, "nn": 0.3, "knn": 0.1}
-
-    for key in ["irt", "nn", "knn"]:
-        assert key in weights
-
-    irt_weight, nn_weight, knn_weight = weights["irt"], weights["nn"], weights["knn"]
-
-    if not np.isclose(sum(weights.values()), 1.0):
-        raise ValueError("The weights for KNN, NN, and IRT must sum to 1.")
 
     for i, u in enumerate(valid_data["user_id"]):
         q = valid_data["question_id"][i]
@@ -103,11 +90,7 @@ def evaluate_ensemble(
         # KNN
         knn_prediction = knn_matrix[u, q]
 
-        combined_prediction = (
-            irt_weight * irt_prediction
-            + nn_weight * nn_prediction
-            + knn_weight * knn_prediction
-        )
+        combined_prediction = (irt_prediction + nn_prediction + knn_prediction) / 3
 
         if (combined_prediction >= 0.5) == valid_data["is_correct"][i]:
             correct += 1
