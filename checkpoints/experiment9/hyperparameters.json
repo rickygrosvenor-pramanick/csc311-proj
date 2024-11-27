@@ -1,0 +1,14 @@
+{
+    "n_students": 542,
+    "n_questions": 1774,
+    "student_embed_dim": 8,
+    "question_embed_dim": 16,
+    "hidden_layers": [
+        64,
+        16
+    ],
+    "dropout_p": 0.3,
+    "batch_size": 32,
+    "learning_rate": 0.0003,
+    "device": "cuda"
+}
