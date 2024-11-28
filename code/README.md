@@ -7,7 +7,7 @@ pip install -r requirements.txt
 ```
 
 ## Training the model
-Run the following command to train the model with the default parameters. There were the parameters to obtain the reported metrics.
+Run the following command to train the model with the default parameters. These were the parameters used to obtain the reported metrics.
 ```
 python train.py \
     --dataset_path ../data \
