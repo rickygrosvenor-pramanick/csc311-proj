@@ -1,0 +1,7 @@
+LLM prompts here
+Models used: GPT 4o
+
+1. Add type annotations for these functions ...(function headers for every function in all files)
+2. Generate argparse code for the following example input values ...(pasted hyperparameters.json file)
+3. How do i save and load python dicts to and from json files
+4. How do i make tensorboard show all experiments in a single panel
