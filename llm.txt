@@ -5,3 +5,5 @@ Models used: GPT 4o
 2. Generate argparse code for the following example input values ...(pasted hyperparameters.json file)
 3. How do i save and load python dicts to and from json files
 4. How do i make tensorboard show all experiments in a single panel
+5. What does an optimiser do in pytorch
+6. does autoencoder essentially reconstruct the missing data whereas the ALS factorises and learns two latent matrices just from observed entries in the sparse matrix
