@@ -7,3 +7,5 @@ Models used: GPT 4o
 4. How do i make tensorboard show all experiments in a single panel
 5. What does an optimiser do in pytorch
 6. does autoencoder essentially reconstruct the missing data whereas the ALS factorises and learns two latent matrices just from observed entries in the sparse matrix
+7. How does KNNimpute work?
+8. How do I create a plot with pyplot to draw lines and color specific points?
